@@ -11,7 +11,7 @@ Python (3) ile yazılmış bu konsol uygulaması karşınıza çıkan ingilizce 
 
 * Program aracılığıyla veritabanına kelimeleri, anlamlarıyla ve isteğe bağlı olarak kelimenin içinde geçtiği cümleyle birlikte ekleyebilirsiniz.
 
-![]()
+![](https://github.com/soykan/ingilizce-kelime-ogrenme-uygulamasi/blob/master/tureng.png?raw=true)
 
 * Karşınıza bir kelime çıktığında öncelikle internetten o kelimenin anlamına bakıp ardından program aracılığıyla veritabanına eklemek zorunda değilsiniz çünkü program aracılığı ile bilmediğiniz kelimeyi yazarak [tureng](https://tureng.com) üzerinden gelen anlamları görebilir ve sadece istediğiniz anlamları belirterek veritabanına ekleyebilirsiniz.
 
