@@ -1,1 +1,3 @@
-# ingilizce-kelime-ogrenme-uygulamasi
+# İngilizce Kelime Öğrenme Uygulaması
+
+
