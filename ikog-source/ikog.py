@@ -288,7 +288,7 @@ def kelime_anlam():
             sira_numaralari = (''.join(eklenecek_anlamlar.split())).split(',')
             eklenecek_anlamlar = []
             for i in sira_numaralari:
-                eklenecek_anlamlar.append(anlamlar[int(i) - 1])
+                eklenecek_anlamlar.append(anlam[int(i) - 1])
             eklenecek_anlamlar = ', '.join(eklenecek_anlamlar)
             print('Eklenecek anlamlar :', eklenecek_anlamlar)
             cumle = input('Kelimenin içinde geçtiği bir cümle giriniz (İsteğe bağlı) : ')
