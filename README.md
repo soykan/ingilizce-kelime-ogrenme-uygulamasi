@@ -18,4 +18,4 @@ Python (3) ile yazılmış bu konsol uygulaması karşınıza çıkan ingilizce 
 ![](https://github.com/soykan/ingilizce-kelime-ogrenme-uygulamasi/blob/master/test.PNG?raw=true)
 
 ### Gereklilikler
-[lxml](https://pypi.python.org/pypi/lxml) ve [requests](https://pypi.python.org/pypi/requests) kütüphaneleri yüklü olmalıdır.
+[lxml](https://pypi.python.org/pypi/lxml), [requests](https://pypi.python.org/pypi/requests) ve [SQLAlchemy](https://pypi.org/project/SQLAlchemy/) kütüphaneleri yüklü olmalıdır.
