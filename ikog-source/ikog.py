@@ -31,7 +31,6 @@ except ImportError:
     elif os.name == 'posix':
         print('[python3 -m pip install requests]')
 
-last_message = ''
 engine = create_engine('sqlite:///kelime-veritabani.db')
 Base = declarative_base()
 
@@ -607,7 +606,7 @@ class KelimeAnlam():
             aranan = input('Anlamını öğrenmek istediğiniz '
                            'kelimeyi girmelisiniz : ')
             print()
-        return kucuk_harfe_cevir(aranan).strip()
+        return aranan.lower().strip()
 
     def kelime_veritabaninda_mevcutsa_yazdir(self, kelime):
         veritabani = self.__veritabani
