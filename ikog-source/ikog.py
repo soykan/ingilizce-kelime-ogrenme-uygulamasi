@@ -5,33 +5,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import UnmappedInstanceError
 from sqlalchemy.orm.exc import sa_exc
+from lxml import html
+import requests
 import random
 import os
 import sys
-try:
-    from lxml import html
-except ImportError:
-    print(
-        'Programın bazı fonksiyonlarından yararlanabilmek için lxml',
-        'kütüphanesini yüklemeniz gerekiyor.'
-    )
-    if os.name == 'nt':
-        print('[python -m pip install lxml]')
-    elif os.name == 'posix':
-        print('[python3 -m pip install lxml]')
-try:
-    import requests
-except ImportError:
-    print(
-        'Programın bazı fonksiyonlarından yararlanabilmek için requests',
-        'kütüphanesini yüklemeniz gerekiyor.'
-    )
-    if os.name == 'nt':
-        print('[python -m pip install requests]')
-    elif os.name == 'posix':
-        print('[python3 -m pip install requests]')
 
-engine = create_engine('sqlite:///kelime-veritabani.db')
+
 Base = declarative_base()
 
 
@@ -46,11 +26,6 @@ class Kelimeler(Base):
 
     def __repr__(self):
         return 'kelime=%s' % self.kelime
-
-
-Base.metadata.create_all(engine)
-Session = sessionmaker(bind=engine)
-session = Session()
 
 
 class Menu:
@@ -120,16 +95,28 @@ class Menu:
 
 
 class VeritabaniIslemleri():
-    def veritabanina_ekle(self, kelime_verisi):
+    __session = None
+
+    @classmethod
+    def veritabanini_hazirla(cls):
+        engine = create_engine('sqlite:///kelime-veritabani.db')
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        cls.__session = Session()
+
+    @classmethod
+    def veritabanina_ekle(cls, kelime_verisi):
         try:
-            session.add(kelime_verisi)
-            session.commit()
+            cls.__session.add(kelime_verisi)
+            cls.__session.commit()
             return True
         except sa_exc.SQLAlchemyError:
             return False
 
-    def veritabaninda_guncelle(self, kelime, veri):
+    @classmethod
+    def veritabaninda_guncelle(cls, kelime, veri):
         try:
+            session = cls.__session
             record = session.query(Kelimeler).filter_by(kelime=kelime).first()
             record.kelime = veri.kelime
             record.anlam = veri.anlam
@@ -139,53 +126,119 @@ class VeritabaniIslemleri():
         except sa_exc.SQLAlchemyError:
             return False
 
-    def veritabanindan_sil(self, kelime):
+    @classmethod
+    def veritabanindan_sil(cls, kelime):
         try:
-            silinecek_kelime = session.query(Kelimeler) \
+            silinecek_kelime = cls.__session.query(Kelimeler) \
                 .filter_by(kelime=kelime).first()
-            session.delete(silinecek_kelime)
-            session.commit()
+            cls.__session.delete(silinecek_kelime)
+            cls.__session.commit()
             return True
         except UnmappedInstanceError:
             return False
 
-    def kelime_veritabaninda_mevcut_mu(self, aranan_kelime):
+    @classmethod
+    def kelime_veritabaninda_mevcut_mu(cls, aranan_kelime):
         try:
-            for row in session.query(Kelimeler.kelime).all():
+            for row in cls.__session.query(Kelimeler.kelime).all():
                 if (row.kelime == aranan_kelime):
                     return True
             return False
         except sa_exc.SQLAlchemyError:
             return False
 
-    def veritabanindan_kayit_getir(self, dogru_sayisi_kosulu):
-        kayitlar = session.query(Kelimeler) \
+    @classmethod
+    def veritabanindan_kayit_getir(cls, dogru_sayisi_kosulu):
+        kayitlar = cls.__session.query(Kelimeler) \
                 .filter(Kelimeler.dogru_sayisi < dogru_sayisi_kosulu).all()
         return kayitlar
 
-    def kelimenin_kaydini_getir(self, kelime):
+    @classmethod
+    def kelimenin_kaydini_getir(cls, kelime):
+        session = cls.__session
         kayit = session.query(Kelimeler).filter_by(kelime=kelime).first()
         return kayit
 
-    def kaydin_dogru_sayisi_degerini_arttir(self, kelime):
+    @classmethod
+    def kaydin_dogru_sayisi_degerini_arttir(cls, kelime):
         try:
-            record = session.query(Kelimeler) \
+            record = cls.__session.query(Kelimeler) \
                 .filter(Kelimeler.kelime == kelime).first()
             record.dogru_sayisi += 1
-            session.commit()
+            cls.__session.commit()
             return True
         except sa_exc.SQLAlchemyError:
             return False
 
-    def kaydin_dogru_sayisi_degerini_azalt(self, kelime):
+    @classmethod
+    def kaydin_dogru_sayisi_degerini_azalt(cls, kelime):
         try:
-            record = session.query(Kelimeler) \
+            record = cls.__session.query(Kelimeler) \
                 .filter(Kelimeler.kelime == kelime).first()
             record.dogru_sayisi -= 1
-            session.commit()
+            cls.__session.commit()
             return True
         except sa_exc.SQLAlchemyError:
             return False
+
+
+class IO():
+    @staticmethod
+    def menuye_don():
+        input('Menüye dönmek için ENTER tuşuna basın..')
+
+    @staticmethod
+    def requests_kutuphanesi_eksik():
+        print()
+        print('requests kütüphanesini yüklemelisiniz!')
+        print('[python3 -m pip install requests]')
+        print()
+        IO.menuye_don()
+
+    @staticmethod
+    def lxml_kutuphanesi_eksik():
+        print()
+        print('lxml kütüphanesini yüklemelisiniz!')
+        print('[python3 -m pip install lxml]')
+        print()
+        IO.menuye_don()
+
+
+class KelimeEkleIO():
+    @staticmethod
+    def kelime_girisi():
+        kelime = input('Kelimeyi giriniz : ')
+        while kelime.strip() == '':
+            kelime = input('İşlem için kelimeyi girmelisiniz : ')
+        return kucuk_harfe_cevir(kelime).strip()
+
+    @staticmethod
+    def kelime_veritabaninda_mevcut():
+        print('Bu kelime zaten veritabanında mevcut.')
+
+    @staticmethod
+    def kelime_anlam_girisi():
+        anlam = input('Kelimenin anlamını giriniz : ')
+        while (anlam.strip() == ''):
+            anlam = input('Kelimenin anlamını girmelisiniz : ')
+        return kucuk_harfe_cevir(anlam).strip()
+
+    @staticmethod
+    def cumle_girisi():
+        return input('Kelimenin içinde bulunduğu cümleyi giriniz '
+                     '(İsteğe bağlı) : ').strip()
+
+    @staticmethod
+    def veritabanina_eklendi():
+        print()
+        print('Veritabanına eklendi.')
+        print()
+
+    @staticmethod
+    def veritabanina_eklenemedi():
+        print()
+        print("Hata oluştu, veritabanına eklenemedi.")
+        print()
 
 
 class KelimeEkle():
@@ -203,46 +256,78 @@ class KelimeEkle():
                                       cumle=self.__cumle,
                                       dogru_sayisi=0)
             self.veritabanina_ekle(kelime_verisi)
-        input('Menüye dönmek için ENTER tuşuna basın..')
+        IO.menuye_don()
 
     def veri_girisi(self):
-        self.__kelime = self.kelime_girisi()
+        self.__kelime = KelimeEkleIO.kelime_girisi()
         if self.kelime_veritabaninda_mevcut_mu(self.__kelime):
-            self.kelime_veritabaninda_mevcut()
+            KelimeEkleIO.kelime_veritabaninda_mevcut()
             return False
-        self.__anlam = self.kelime_anlam_girisi()
-        self.__cumle = self.cumle_girisi()
+        self.__anlam = KelimeEkleIO.kelime_anlam_girisi()
+        self.__cumle = KelimeEkleIO.cumle_girisi()
         return True
-
-    def kelime_girisi(self):
-        kelime = input('Kelimeyi giriniz : ')
-        while kelime.strip() == '':
-            kelime = input('İşlem için kelimeyi girmelisiniz : ')
-        return kucuk_harfe_cevir(kelime).strip()
 
     def kelime_veritabaninda_mevcut_mu(self, aranan_kelime):
         return self.__veritabani.kelime_veritabaninda_mevcut_mu(aranan_kelime)
 
-    def kelime_veritabaninda_mevcut(self):
-        print('Bu kelime zaten veritabanında mevcut.')
+    def veritabanina_ekle(self, kelime_verisi):
+        if self.__veritabani.veritabanina_ekle(kelime_verisi):
+            KelimeEkleIO.veritabanina_eklendi()
+        else:
+            KelimeEkleIO.veritabanina_eklenemedi()
+
+
+class KelimeGuncelleIO():
+    @staticmethod
+    def guncellenecek_kelime_girisi():
+        kelime = input('Güncellenecek kelimeyi giriniz : ')
+        while (kelime == ''):
+            kelime = input('Güncellenecek kelimeyi girmelisiniz : ')
+        kelime = kucuk_harfe_cevir(kelime).strip()
+        return kelime
+
+    @staticmethod
+    def guncellenecek_kelime_mevcut_degil():
+        print()
+        print('Güncellemek istediğiniz kelime veritabanında mevcut değil!')
+        print()
         input('Menüye dönmek için ENTER tuşuna basın..')
 
-    def kelime_anlam_girisi(self):
-        anlam = input('Kelimenin anlamını giriniz : ')
+    @staticmethod
+    def yeni_kelime_girisi():
+        yeni_kelime = input('Yeni kelimeyi giriniz : ')
+        while (yeni_kelime.strip() == ''):
+            yeni_kelime = input('Yeni kelimeyi girmelisiniz : ')
+        return kucuk_harfe_cevir(yeni_kelime).strip()
+
+    @staticmethod
+    def yeni_kelime_zaten_mevcut():
+        print('Güncellemek üzere yazdığınız yeni kelime',
+              'zaten veritabanında mevcut')
+        input('Menüye dönmek için ENTER tuşuna basın..')
+
+    @staticmethod
+    def yeni_anlam_girisi():
+        anlam = input('Yeni kelimenin anlamını giriniz : ')
         while (anlam.strip() == ''):
-            anlam = input('Kelimenin anlamını girmelisiniz : ')
+            anlam = input('Yeni kelimenin anlamını girmelisiniz : ')
         return kucuk_harfe_cevir(anlam).strip()
 
-    def cumle_girisi(self):
-        return input('Kelimenin içinde bulunduğu cümleyi giriniz '
-                     '(İsteğe bağlı) : ').strip()
+    @staticmethod
+    def yeni_cumle_girisi():
+        cumle = input('Yeni kelimenin içinde bulunduğu cümleyi giriniz : ')
+        return cumle.strip()
 
-    def veritabanina_ekle(self, kelime_verisi):
+    @staticmethod
+    def veritabaninda_guncellendi():
         print()
-        if self.__veritabani.veritabanina_ekle(kelime_verisi):
-            print('Veritabanına eklendi.')
-        else:
-            print("Hata oluştu, veritabanına eklenemedi.")
+        print("Veritabanında güncellendi.")
+        print()
+
+    @staticmethod
+    def guncelleme_basarisiz():
+        print()
+        print("Hata oluştu. Güncelleme başarısız.")
         print()
 
 
@@ -256,39 +341,29 @@ class KelimeGuncelle():
         self.kelime_guncelle()
 
     def kelime_guncelle(self):
-        self.__guncellenecek_kelime = self.guncellenecek_kelime_girisi()
+        guncellenecek_kelime = KelimeGuncelleIO.guncellenecek_kelime_girisi()
+        self.__guncellenecek_kelime = guncellenecek_kelime
         if not self.guncellenecek_kelime_mevcut_mu():
             return
-        self.__yeni_kelime = self.yeni_kelime_girisi()
+        self.__yeni_kelime = KelimeGuncelleIO.yeni_kelime_girisi()
         if self.yeni_kelime_veritabaninda_mevcut_mu():
             return
-        self.__anlam = self.yeni_anlam_girisi()
-        self.__cumle = self.yeni_cumle_girisi()
+        self.__anlam = KelimeGuncelleIO.yeni_anlam_girisi()
+        self.__cumle = KelimeGuncelleIO.yeni_cumle_girisi()
         self.veritabaninda_guncelle()
 
     def guncellenecek_kelime_mevcut_mu(self):
         if self.kelime_veritabaninda_mevcut_mu(self.__guncellenecek_kelime):
             return True
         else:
-            self.guncellenecek_kelime_mevcut_degil()
+            KelimeGuncelleIO.guncellenecek_kelime_mevcut_degil()
             return False
-
-    def guncellenecek_kelime_mevcut_degil(self):
-        print()
-        print('Güncellemek istediğiniz kelime veritabanında mevcut değil!')
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
-
-    def yeni_kelime_zaten_mevcut(self):
-        print('Güncellemek üzere yazdığınız yeni kelime',
-              'zaten veritabanında mevcut')
-        input('Menüye dönmek için ENTER tuşuna basın..')
 
     def yeni_kelime_veritabaninda_mevcut_mu(self):
         kelimeler_farkli_mi = self.__guncellenecek_kelime != self.__yeni_kelime
         mevcut_mu = self.kelime_veritabaninda_mevcut_mu(self.__yeni_kelime)
         if kelimeler_farkli_mi and mevcut_mu:
-            self.yeni_kelime_zaten_mevcut()
+            KelimeGuncelleIO.yeni_kelime_zaten_mevcut()
             return True
         return False
 
@@ -299,36 +374,33 @@ class KelimeGuncelle():
         kelime = self.__guncellenecek_kelime
         veri = Kelimeler(kelime=self.__yeni_kelime, anlam=self.__anlam,
                          cumle=self.__cumle)
-        print()
         if self.__veritabani.veritabaninda_guncelle(kelime, veri):
-            print("Veritabanında güncellendi.")
+            KelimeGuncelleIO.veritabaninda_guncellendi()
         else:
-            print("Hata oluştu. Güncelleme başarısız.")
+            KelimeGuncelleIO.guncelleme_basarisiz()
+        IO.menuye_don()
+
+
+class KelimeSilIO():
+    @staticmethod
+    def veritabanindan_silindi():
         print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
+        print("Veritabanından silindi.")
+        print()
 
-    def guncellenecek_kelime_girisi(self):
-        kelime = input('Güncellenecek kelimeyi giriniz : ')
-        while (kelime == ''):
-            kelime = input('Güncellenecek kelimeyi girmelisiniz : ')
-        kelime = kucuk_harfe_cevir(kelime).strip()
-        return kelime
+    @staticmethod
+    def kelime_kayitli_degil():
+        print()
+        print('Silmek istediğiniz kelime kayıtlı değil!')
+        print()
 
-    def yeni_kelime_girisi(self):
-        yeni_kelime = input('Yeni kelimeyi giriniz : ')
-        while (yeni_kelime.strip() == ''):
-            yeni_kelime = input('Yeni kelimeyi girmelisiniz : ')
-        return kucuk_harfe_cevir(yeni_kelime).strip()
-
-    def yeni_anlam_girisi(self):
-        anlam = input('Yeni kelimenin anlamını giriniz : ')
-        while (anlam.strip() == ''):
-            anlam = input('Yeni kelimenin anlamını girmelisiniz : ')
-        return kucuk_harfe_cevir(anlam).strip()
-
-    def yeni_cumle_girisi(self):
-        cumle = input('Yeni kelimenin içinde bulunduğu cümleyi giriniz : ')
-        return cumle.strip()
+    @staticmethod
+    def kelime_girisi():
+        kelime = input('Silinecek kelimeyi giriniz : ')
+        while (kelime.strip() == ''):
+            print()
+            kelime = input('Silinecek kelimeyi girmelisiniz : ')
+        return kucuk_harfe_cevir(kelime).strip()
 
 
 class KelimeSil():
@@ -339,32 +411,99 @@ class KelimeSil():
 
     def kelime_sil(self):
         print()
-        self.__kelime = self.kelime_girisi()
+        self.__kelime = KelimeSilIO.kelime_girisi()
         self.veritabanindan_sil()
-        input('Menüye dönmek için ENTER tuşuna basın..')
-
-    def kelime_girisi(self):
-        kelime = input('Silinecek kelimeyi giriniz : ')
-        while (kelime.strip() == ''):
-            print()
-            kelime = input('Silinecek kelimeyi girmelisiniz : ')
-        return kucuk_harfe_cevir(kelime).strip()
+        IO.menuye_don()
 
     def veritabanindan_sil(self):
         if self.__veritabani.veritabanindan_sil(self.__kelime):
-            self.veritabanindan_silindi()
+            KelimeSilIO.veritabanindan_silindi()
         else:
-            self.kelime_kayitli_degil()
+            KelimeSilIO.kelime_kayitli_degil()
 
-    def veritabanindan_silindi(self):
+
+class SoruSorIO():
+    @staticmethod
+    def dogru_sayisi_kosulu_girisi():
+        soru_mesaji = 'Doğru bilinme sayısı ' \
+                      'kaçtan az olan kelimeler sorulsun? : '
+        while (True):
+            try:
+                return int(input(soru_mesaji))
+            except ValueError:
+                print('Sadece sayı girmelisiniz.')
+
+    @staticmethod
+    def kosula_uygun_kelime_bulunamadi(dogru_sayisi_kosulu):
+        print('{0} sayısından daha az doğru sayısına '
+              'sahip kelime bulunamadı.'.format(dogru_sayisi_kosulu))
         print()
-        print("Veritabanından silindi.")
+        IO.menuye_don()
+
+    @staticmethod
+    def kelime_sayisi_girisi(kelime_sayisi):
+        sorulacak_kelime_sayisi = input('{0} kelimeden kaçı sorulsun? : '
+                                        .format(kelime_sayisi))
+        return sorulacak_kelime_sayisi
+
+    @staticmethod
+    def sorulacak_kelime_yok():
+        print()
+        IO.menuye_don()
+
+    @staticmethod
+    def sadece_sayi_girmelisiniz():
+        print('Sadece sayı girmelisiniz.')
+
+    @staticmethod
+    def eldeki_kadar_kelime_sorulacak(sorulacak_kelime_sayisi):
+        print('{0} kelime sorulacak!'.format(sorulacak_kelime_sayisi))
+
+    @staticmethod
+    def cumle_kosulu_belirle():
+        cumle_kosulu = input('Kelimelerin yanında cümle verilsin mi? (E/H) : ')
+        print()
+        return cumle_kosulu.strip()
+
+    @staticmethod
+    def cumle_yazdir(cumle):
+        print(cumle)
+
+    @staticmethod
+    def kelimenin_anlamini_sor(kelime):
+        anlam = input(kelime + ' : ')
+        return anlam.strip()
+
+    @staticmethod
+    def yanit_dogru(anlam):
+        print()
+        print('Yanıt doğru!')
+        print('[{0}]'.format(anlam))
         print()
 
-    def kelime_kayitli_degil(self):
+    @staticmethod
+    def dogru_sayisi_veritabaninda_arttirilamadi():
+        print('Hata oluştu : Kelimenin doğru bilinme sayısı '
+              'veritabanında arttırılamadı.')
+
+    @staticmethod
+    def yanit_yanlis(dogru_yanit):
         print()
-        print('Silmek istediğiniz kelime kayıtlı değil!')
+        print('Yanıt yanlış!')
+        print('Doğru yanıt {0} olacaktı.'.format(dogru_yanit))
         print()
+
+    @staticmethod
+    def dogru_sayisi_veritabaninda_azaltilamadi():
+        print('Hata oluştu : Kelimenin doğru bilinme sayısı '
+              'veritabanında azaltılamadı.')
+
+    @staticmethod
+    def sonucu_yazdir(sonuc):
+        print('{0} sorudan {1} tanesine doğru {2} tanesine yanlış '
+              'yanıt verdiniz!'.format(sonuc['soru_sayisi'],
+                                       sonuc['dogru_sayisi'],
+                                       sonuc['yanlis_sayisi']))
 
 
 class SoruSor():
@@ -382,7 +521,7 @@ class SoruSor():
         self.soru_sor()
 
     def soru_sor(self):
-        self.dogru_sayisi_kosulu_girisi()
+        self.__dogru_sayisi_kosulu = SoruSorIO.dogru_sayisi_kosulu_girisi()
         if not self.sorulacak_kelimenin_verilerini_hazirla():
             return
         if not self.sorulacak_kelime_sayisi_girisi():
@@ -391,40 +530,23 @@ class SoruSor():
         self.sorulacak_kelimeleri_belirle()
         self.sorulari_baslat()
 
-    def dogru_sayisi_kosulu_girisi(self):
-        soru_mesaji = 'Doğru bilinme sayısı ' \
-                      'kaçtan az olan kelimeler sorulsun? : '
-        while (self.__dogru_sayisi_kosulu == ''):
-            try:
-                self.__dogru_sayisi_kosulu = int(input(soru_mesaji))
-            except ValueError:
-                print('Sadece sayı girmelisiniz.')
-                self.__dogru_sayisi_kosulu = ''
-                continue
-
     def sorulacak_kelimenin_verilerini_hazirla(self):
         veritabani = self.__veritabani
         dogru_sayisi_kosulu = self.__dogru_sayisi_kosulu
         kayitlar = veritabani.veritabanindan_kayit_getir(dogru_sayisi_kosulu)
-        if self.kosula_uygun_kelime_bulundu_mu(kayitlar):
+        if self.kosula_uygun_kelime_bulundu_mu(kayitlar, dogru_sayisi_kosulu):
             return True
         return False
 
-    def kosula_uygun_kelime_bulundu_mu(self, kayitlar):
+    def kosula_uygun_kelime_bulundu_mu(self, kayitlar, dogru_sayisi_kosulu):
         if kayitlar == []:
-            self.kosula_uygun_kelime_bulunamadi()
+            SoruSorIO.kosula_uygun_kelime_bulunamadi(dogru_sayisi_kosulu)
             return False
         for kayit in kayitlar:
             self.__kelimeler.append(kayit.kelime)
             self.__anlamlar.append(kayit.anlam)
             self.__cumleler.append(kayit.cumle)
         return True
-
-    def kosula_uygun_kelime_bulunamadi(self):
-        print('{0} sayısından daha az doğru sayısına '
-              'sahip kelime bulunamadı.'.format(self.__dogru_sayisi_kosulu))
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
 
     def sorulacak_kelime_sayisi_girisi(self):
         print()
@@ -438,40 +560,31 @@ class SoruSor():
         return True
 
     def kac_kelime_sorulacak(self):
-        sorulacak_kelime_sayisi = input('{0} kelimeden kaçı sorulsun? : '
-                                        .format(len(self.__kelimeler)))
+        toplam_kelime_sayisi = len(self.__kelimeler)
+        kelime_sayisi = SoruSorIO.kelime_sayisi_girisi(toplam_kelime_sayisi)
         try:
-            return int(sorulacak_kelime_sayisi)
+            return int(kelime_sayisi)
         except ValueError:
-            self.sadece_sayi_girmelisiniz()
+            SoruSorIO.sadece_sayi_girmelisiniz()
             return ''
 
     def sorulacak_kelime_yok(self):
         if self.__sorulacak_kelime_sayisi <= 0:
-            print()
-            input('Menüye dönmek için ENTER tuşuna basın..')
+            SoruSorIO.sorulacak_kelime_yok()
             return True
         return False
-
-    def sadece_sayi_girmelisiniz(self):
-        print('Sadece sayı girmelisiniz.')
 
     def yeterince_kelime_mevcut_mu(self):
         if (self.__sorulacak_kelime_sayisi > len(self.__kelimeler)):
             self.__sorulacak_kelime_sayisi = len(self.__kelimeler)
-            self.eldeki_kadar_kelime_sorulacak()
-
-    def eldeki_kadar_kelime_sorulacak(self):
-        sorulacak_kelime_sayisi = self.__sorulacak_kelime_sayisi
-        print('{0} kelime sorulacak!'.format(sorulacak_kelime_sayisi))
+            sorulacak_kelime_sayisi = self.__sorulacak_kelime_sayisi
+            SoruSorIO.eldeki_kadar_kelime_sorulacak(sorulacak_kelime_sayisi)
 
     def cumle_kosulu_belirle(self):
-        cumle_kosulu = input('Kelimelerin yanında cümle verilsin mi? (E/H) : ')
-        self.__cumle_kosulu = cumle_kosulu.strip()
-        print()
+        self.__cumle_kosulu = SoruSorIO.cumle_kosulu_belirle()
 
     def sorulacak_kelimeleri_belirle(self):
-        for i in range(0, self.__sorulacak_kelime_sayisi):
+        for _ in range(0, self.__sorulacak_kelime_sayisi):
             self.sorulacak_kelime_ekle()
 
     def sorulacak_kelime_ekle(self):
@@ -484,21 +597,17 @@ class SoruSor():
     def sorulari_baslat(self):
         for kelime in self.__sorulacak_kelimeler:
             self.cumle_isteniyorsa_yazdir(kelime)
-            anlam = self.kelimenin_anlamini_sor(kelime)
+            anlam = SoruSorIO.kelimenin_anlamini_sor(kelime)
             self.yaniti_degerlendir(kelime, anlam)
         self.sonucu_yazdir()
-        input('Menüye dönmek için ENTER tuşuna basın..')
+        IO.menuye_don()
 
     def cumle_isteniyorsa_yazdir(self, kelime):
         cumle_kosulu = self.__cumle_kosulu
         cumleler = self.__cumleler
         kelimeler = self.__kelimeler
         if (cumle_kosulu == 'E' or cumle_kosulu == 'e'):
-            print(cumleler[kelimeler.index(kelime)])
-
-    def kelimenin_anlamini_sor(self, kelime):
-        anlam = input(kelime + ' : ')
-        return anlam.strip()
+            SoruSorIO.cumle_yazdir(cumleler[kelimeler.index(kelime)])
 
     def yaniti_degerlendir(self, kelime, yanit):
         anlam = self.kelimenin_anlamini_getir(kelime)
@@ -529,42 +638,144 @@ class SoruSor():
     def yanit_dogru(self, kelime):
         anlamlar = self.__anlamlar
         kelimeler = self.__kelimeler
-        print()
-        print('Yanıt doğru!')
-        print('[' + anlamlar[kelimeler.index(kelime)] + ']')
-        print()
+        anlam = anlamlar[kelimeler.index(kelime)]
+        SoruSorIO.yanit_dogru(anlam)
 
     def dogru_yanit_sayisini_arttir(self, kelime):
         veritabani = self.__veritabani
         if not veritabani.kaydin_dogru_sayisi_degerini_arttir(kelime):
-            print('Hata oluştu : Kelimenin doğru bilinme sayısı '
-                  'veritabanında arttırılamadı.')
+            SoruSorIO.dogru_sayisi_veritabaninda_arttirilamadi()
         self.__dogru_yanit_sayisi += 1
 
     def yanit_yanlis(self, kelime):
         anlamlar = self.__anlamlar
         kelimeler = self.__kelimeler
         dogru_yanit = anlamlar[kelimeler.index(kelime)]
-        print()
-        print('Yanıt yanlış!')
-        print('Doğru yanıt {0} olacaktı.'.format(dogru_yanit))
-        print()
+        SoruSorIO.yanit_yanlis(dogru_yanit)
 
     def dogru_yanit_sayisini_azalt(self, kelime):
         veritabani = self.__veritabani
         if not veritabani.kaydin_dogru_sayisi_degerini_azalt(kelime):
-            print('Hata oluştu : Kelimenin doğru bilinme sayısı '
-                  'veritabanında azaltılamadı.')
+            SoruSorIO.dogru_sayisi_veritabaninda_azaltilamadi()
         self.__yanlis_yanit_sayisi += 1
 
     def sonucu_yazdir(self):
-        sorulacak_kelime_sayisi = self.__sorulacak_kelime_sayisi
-        dogru_yanit_sayisi = self.__dogru_yanit_sayisi
-        yanlis_yanit_sayisi = self.__yanlis_yanit_sayisi
-        print('{0} sorudan {1} tanesine doğru {2} tanesine yanlış '
-              'yanıt verdiniz!'.format(sorulacak_kelime_sayisi,
-                                       dogru_yanit_sayisi,
-                                       yanlis_yanit_sayisi))
+        soru_sayisi = self.__sorulacak_kelime_sayisi
+        dogru_sayisi = self.__dogru_yanit_sayisi
+        yanlis_sayisi = self.__yanlis_yanit_sayisi
+        sonuc = {
+            'soru_sayisi': soru_sayisi,
+            'dogru_sayisi': dogru_sayisi,
+            'yanlis_sayisi': yanlis_sayisi
+            }
+        SoruSorIO.sonucu_yazdir(sonuc)
+
+
+class KelimeAnlamIO():
+    @staticmethod
+    def kelime_girisi():
+        print()
+        aranan = input('Anlamını öğrenmek istediğiniz kelimeyi giriniz : ')
+        while (aranan.strip() == ''):
+            aranan = input('Anlamını öğrenmek istediğiniz '
+                           'kelimeyi girmelisiniz : ')
+            print()
+        return aranan.lower().strip()
+
+    @staticmethod
+    def veritabanindaki_kaydi_yazdir(kayit):
+        print()
+        print('# Veritabanındaki Kayıtlar #')
+        print()
+        print('Kelime : {0}'.format(kayit.kelime))
+        print('Anlam : {0}'.format(kayit.anlam))
+        print('Cümle : {0}'.format(kayit.cumle))
+
+    @staticmethod
+    def kelimenin_anlami_bulunamadi():
+        print("Tureng'de belirttiğiniz kelimenin anlamı bulunamadı!")
+        print()
+        input('Menüye dönmek için ENTER tuşuna basın..')
+
+    @staticmethod
+    def tablo_basligini_yazdir(uzunluk):
+        print()
+        print()
+        print('# Tureng Dictionary #')
+        print()
+        print('    Category' + 12 * ' ' + 'English' + 13 * ' ' + 'Turkish')
+        print('------------' + 12 * '-' + '-------' + 13 * '-' + uzunluk * '-')
+
+    @classmethod
+    def tablo_satirlarini_yazdir(cls, kategoriler, kelimeler, anlam):
+        for i in range(0, len(anlam)):
+            cls.tablo_satirini_yazdir(i, kategoriler, kelimeler, anlam)
+
+    @staticmethod
+    def tablo_satirini_yazdir(index, kategoriler, kelimeler, anlam):
+        i = index
+        print(str(i + 1) + (4 - len(str(i+1))) * ' ', end='')
+        print(kategoriler[i] + (20 - len(kategoriler[i])) * ' ', end='')
+        print(kelimeler[i] + (20 - len(kelimeler[i])) * ' ', end='')
+        print(anlam[i])
+        if (i == 9 or i == 19 or i == 29 or i == 39 or i == 49 or i == 59):
+            input("Devamı için [ENTER]'a basın")
+
+    @staticmethod
+    def veritabanina_eklensin_mi():
+        print()
+        eklensin_mi = input('Bulduğunuz kelime ve anlamları '
+                            'veritabanına eklensin mi (E/H) ? : ')
+        print()
+        if (eklensin_mi == 'E' or eklensin_mi == 'e'):
+            return True
+        return False
+
+    @staticmethod
+    def eklenecek_anlamlar_girisi():
+        eklenecek_anlamlar = ''
+        while (eklenecek_anlamlar == ''):
+            eklenecek_anlamlar = input('Eklemek istediğiniz kelimenin '
+                                       'anlamlarının sıra numaralarını '
+                                       'virgülle ayırarak giriniz : ')
+        return eklenecek_anlamlar
+
+    @staticmethod
+    def yanlis_deger_girdiniz():
+        print('Yanlış değer girdiniz!')
+        print()
+
+    @staticmethod
+    def yanlis_sira_numarasi_girdiniz():
+        print('Yanlış sıra numarası girdiniz!')
+        print()
+
+    @staticmethod
+    def eklenecek_anlamlari_yazdir(eklenecek_anlamlar):
+        print()
+        print('Eklenecek anlamlar :', eklenecek_anlamlar)
+        print()
+
+    @staticmethod
+    def cumle_girisi():
+        cumle = input('Kelimenin içinde geçtiği bir cümle giriniz '
+                      '(İsteğe bağlı) : ')
+        print()
+        return cumle
+
+    @staticmethod
+    def veritabanina_eklendi():
+        print()
+        print('Veritabanına eklendi.')
+        print()
+        IO.menuye_don()
+
+    @staticmethod
+    def veritabanina_eklenirken_hata():
+        print()
+        print('Hata : Veritabanına eklenemedi.')
+        print()
+        IO.menuye_don()
 
 
 class KelimeAnlam():
@@ -582,7 +793,7 @@ class KelimeAnlam():
         self.kelime_anlam()
 
     def kelime_anlam(self):
-        self.__kelime = self.kelime_girisi()
+        self.__kelime = KelimeAnlamIO.kelime_girisi()
         self.kelime_veritabaninda_mevcutsa_yazdir(self.__kelime)
         self.__page = self.sayfayi_getir()
         if self.__page is None:
@@ -599,30 +810,12 @@ class KelimeAnlam():
         if not self.veritabanina_eklensin_mi():
             return
 
-    def kelime_girisi(self):
-        print()
-        aranan = input('Anlamını öğrenmek istediğiniz kelimeyi giriniz : ')
-        while (aranan.strip() == ''):
-            aranan = input('Anlamını öğrenmek istediğiniz '
-                           'kelimeyi girmelisiniz : ')
-            print()
-        return aranan.lower().strip()
-
     def kelime_veritabaninda_mevcutsa_yazdir(self, kelime):
         veritabani = self.__veritabani
         kayit = veritabani.kelimenin_kaydini_getir(kelime)
         if kayit is not None:
             self.__kelime_mevcudiyet = True
-            self.veritabanindaki_kaydi_yazdir(kayit)
-        print()
-
-    def veritabanindaki_kaydi_yazdir(self, kayit):
-        print()
-        print('# Veritabanındaki Kayıtlar #')
-        print()
-        print('Kelime : {0}'.format(kayit.kelime))
-        print('Anlam : {0}'.format(kayit.anlam))
-        print('Cümle : {0}'.format(kayit.cumle))
+            KelimeAnlamIO.veritabanindaki_kaydi_yazdir(kayit)
 
     def sayfayi_getir(self):
         try:
@@ -630,36 +823,22 @@ class KelimeAnlam():
                                 .format(self.__kelime,))
             return page
         except NameError:
-            self.requests_kutuphanesi_eksik()
+            IO.requests_kutuphanesi_eksik()
             return None
-
-    def requests_kutuphanesi_eksik(self):
-        print()
-        print('requests kütüphanesini yüklemelisiniz!')
-        print('[python -m pip install requests]')
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
 
     def parse_edilmis_html_verisini_getir(self):
         try:
             tree = html.fromstring(self.__page.content)
             return tree
         except NameError:
-            self.lxml_kutuphanesi_eksik()
+            IO.lxml_kutuphanesi_eksik()
             return None
-
-    def lxml_kutuphanesi_eksik(self):
-        print()
-        print('lxml kütüphanesini yüklemelisiniz!')
-        print('[python -m pip install lxml]')
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
 
     def kelimeye_ait_bulunan_verileri_al(self):
         kelimeler, anlamlar = self.verileri_ayikla()
         if (len(anlamlar) == 0 or ((self.__kelime in anlamlar) and
                                    self.__kelime not in kelimeler)):
-            self.kelimenin_anlami_bulunamadi()
+            KelimeAnlamIO.kelimenin_anlami_bulunamadi()
             return False
         return True
 
@@ -669,11 +848,6 @@ class KelimeAnlam():
         self.__kelimeler = tree.xpath('//td[@class="en tm"]/a/text()')
         self.__anlamlar = tree.xpath('//td[@class="tr ts"]/a/text()')
         return self.__kelimeler, self.__anlamlar
-
-    def kelimenin_anlami_bulunamadi(self):
-        print("Tureng'de belirttiğiniz kelimenin anlamı bulunamadı!")
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
 
     def anlam_degerlerini_hazirla(self):
         aranan = self.__kelime
@@ -691,51 +865,23 @@ class KelimeAnlam():
             self.__euaksu = len(anlam)
 
     def bulunan_anlamlari_yazdir(self):
-        self.tablo_basligini_yazdir()
-        self.tablo_satirlarini_yazdir()
-
-    def tablo_basligini_yazdir(self):
-        euaksu = self.__euaksu
-        print()
-        print('# Tureng Dictionary #')
-        print()
-        print('    Category' + 12 * ' ' + 'English' + 13 * ' ' + 'Turkish')
-        print('------------' + 12 * '-' + '-------' + 13 * '-' + euaksu * '-')
-
-    def tablo_satirlarini_yazdir(self):
-        for i in range(0, len(self.__anlam)):
-            self.tablo_satirini_yazdir(i)
-
-    def tablo_satirini_yazdir(self, index):
-        i = index
+        KelimeAnlamIO.tablo_basligini_yazdir(self.__euaksu)
         kategoriler = self.__kategoriler
         kelimeler = self.__kelimeler
         anlam = self.__anlam
-        print(str(i + 1) + (4 - len(str(i+1))) * ' ', end='')
-        print(kategoriler[i] + (20 - len(kategoriler[i])) * ' ', end='')
-        print(kelimeler[i] + (20 - len(kelimeler[i])) * ' ', end='')
-        print(anlam[i])
-        if (i == 9 or i == 19 or i == 29 or i == 39 or i == 49 or i == 59):
-            daha_fazla = input("Devamı için [ENTER]'a basın")
+        KelimeAnlamIO.tablo_satirlarini_yazdir(kategoriler, kelimeler, anlam)
 
     def kelime_mevcut_mu(self):
         if self.__kelime_mevcudiyet:
-            self.menuye_don()
+            print()
+            IO.menuye_don()
         return self.__kelime_mevcudiyet
 
-    def menuye_don(self):
-        print()
-        input('Menüye dönmek için ENTER tuşuna basın..')
-
     def veritabanina_eklensin_mi(self):
-        print()
-        eklensin_mi = input('Bulduğunuz kelime ve anlamları '
-                            'veritabanına eklensin mi (E/H) ? : ')
-        print()
-        if (eklensin_mi == 'E' or eklensin_mi == 'e'):
+        if KelimeAnlamIO.veritabanina_eklensin_mi():
             self.veritabanina_ekle()
             return True
-        self.menuye_don()
+        IO.menuye_don()
         return False
 
     def veritabanina_ekle(self):
@@ -744,16 +890,8 @@ class KelimeAnlam():
             sira_numaralari = self.sira_numaralarini_hazirla()
         self.secilenleri_veritabanina_kaydet(sira_numaralari)
 
-    def eklenecek_anlamlar_girisi(self):
-        eklenecek_anlamlar = ''
-        while (eklenecek_anlamlar == ''):
-            eklenecek_anlamlar = input('Eklemek istediğiniz kelimenin '
-                                       'anlamlarının sıra numaralarını '
-                                       'virgülle ayırarak giriniz : ')
-        return eklenecek_anlamlar
-
     def sira_numaralarini_hazirla(self):
-        eklenecek_anlamlar = self.eklenecek_anlamlar_girisi()
+        eklenecek_anlamlar = KelimeAnlamIO.eklenecek_anlamlar_girisi()
         eklenecek_anlamlar = self.bosluklari_sil(eklenecek_anlamlar)
         return self.virgule_gore_ayirarak_listele(eklenecek_anlamlar)
 
@@ -766,26 +904,24 @@ class KelimeAnlam():
     def sira_numaralari_kontrol(self, sira_numaralari):
         for i in sira_numaralari:
             if not i.isdigit():
-                print('Yanlış değer girdiniz!')
-                print()
+                KelimeAnlamIO.yanlis_deger_girdiniz()
                 return False
             elif int(i) <= 0 or int(i) > len(self.__anlam):
-                print('Yanlış sıra numarası girdiniz!')
-                print()
+                KelimeAnlamIO.yanlis_sira_numarasi_girdiniz()
                 return False
         return True
 
     def secilenleri_veritabanina_kaydet(self, sira_numaralari):
         kelime_verisi = self.kelime_verisini_hazirla(sira_numaralari)
         if self.__veritabani.veritabanina_ekle(kelime_verisi):
-            self.veritabanina_eklendi()
+            KelimeAnlamIO.veritabanina_eklendi()
         else:
-            self.veritabanina_eklenirken_hata()
+            KelimeAnlamIO.veritabanina_eklenirken_hata()
 
     def kelime_verisini_hazirla(self, sira_numaralari):
         eklenecek_anlamlar = self.eklenecek_anlamlari_hazirla(sira_numaralari)
-        self.eklenecek_anlamlari_yazdir(eklenecek_anlamlar)
-        cumle = self.cumle_girisi()
+        KelimeAnlamIO.eklenecek_anlamlari_yazdir(eklenecek_anlamlar)
+        cumle = KelimeAnlamIO.cumle_girisi()
         kelime_verisi = Kelimeler(kelime=self.__kelime,
                                   anlam=eklenecek_anlamlar,
                                   cumle=cumle,
@@ -800,29 +936,6 @@ class KelimeAnlam():
         eklenecek_anlamlar = ', '.join(eklenecek_anlamlar)
         return eklenecek_anlamlar
 
-    def eklenecek_anlamlari_yazdir(self, eklenecek_anlamlar):
-        print()
-        print('Eklenecek anlamlar :', eklenecek_anlamlar)
-        print()
-
-    def cumle_girisi(self):
-        cumle = input('Kelimenin içinde geçtiği bir cümle giriniz '
-                      '(İsteğe bağlı) : ')
-        print()
-        return cumle
-
-    def veritabanina_eklendi(self):
-        print()
-        print('Veritabanına eklendi.')
-        print()
-        self.menuye_don()
-
-    def veritabanina_eklenirken_hata(self):
-        print()
-        print('Hata : Veritabanına eklenemedi.')
-        print()
-        self.menuye_don()
-
 
 def kucuk_harfe_cevir(metin):
     lower_map = {
@@ -832,5 +945,7 @@ def kucuk_harfe_cevir(metin):
     metin = metin.translate(lower_map).lower()
     return metin
 
+
 if __name__ == '__main__':
+    VeritabaniIslemleri().veritabanini_hazirla()
     Menu().menu_secim()
